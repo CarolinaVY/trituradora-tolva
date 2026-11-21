@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control principal — Trituradora Tolva</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --ok: #22c55e;
+      --err: #ef4444;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 20px; background: var(--bg); color: var(--text); }
+    .container { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 10px; background: var(--card); padding: 16px 20px;
+      border-radius: 12px; border: 1px solid var(--border);
+    }
+    .badge { padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; }
+    .badge.ok { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .badge.err { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    .grid-gauges {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card); padding: 18px; border-radius: 12px; border: 1px solid var(--border);
+    }
+    .card h2 {
+      margin: 0 0 6px 0; font-size: 1rem; color: var(--text); font-weight: 600;
+    }
+    .sub { font-size: 0.8rem; color: var(--muted); }
+    .gauge-box {
+      display: flex; flex-direction: column; align-items: center; margin-top: 8px;
+    }
+    svg.gauge { width: 220px; height: 125px; overflow: visible; }
+    .gauge-readout {
+      font-size: 1.5rem; font-weight: 700; margin-top: 2px;
+    }
+    .tapa-valor {
+      font-size: 1.5rem; font-weight: 700; margin-top: 10px;
+    }
+    .botones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    button {
+      border: none; padding: 12px 16px; border-radius: 8px;
+      font-weight: 700; cursor: pointer; color: #fff;
+    }
+    .btn-on { background: #e11d48; }
+    .btn-mid { background: #2563eb; }
+    .btn-off { background: #111827; border: 1px solid #475569; }
+    pre {
+      margin: 8px 0 0 0; padding: 12px; background: #0f172a; border-radius: 8px;
+      border: 1px solid var(--border); font-size: 0.85rem; max-height: 190px;
+      overflow: auto; white-space: pre-wrap; word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <strong>Control principal — Trituradora Tolva</strong>
+        <div class="sub">Broker: wss://broker.hivemq.com:8884/mqtt | Topic: tolva/telemetria</div>
+      </div>
+      <span id="estadoConexion" class="badge err">Desconectado</span>
+    </div>
+
+    <div class="grid-gauges">
+      <!-- Medidor Temperatura motor -->
+      <div class="card">
+        <h2>Temperatura motor</h2>
+        <div class="sub">Rango: 0 - 100 °C ($.T)</div>
+        <div class="gauge-box">
+          <svg class="gauge" viewBox="0 0 200 110">
+            <!-- Arco verde: 0 a 33.33% -->
+            <path d="M 20 100 A 80 80 0 0 1 66.4 27.6" fill="none" stroke="#16a34a" stroke-width="16" stroke-linecap="butt" />
+            <!-- Arco amarillo: 33.33% a 66.67% -->
+            <path d="M 66.4 27.6 A 80 80 0 0 1 133.6 27.6" fill="none" stroke="#eab308" stroke-width="16" stroke-linecap="butt" />
+            <!-- Arco rojo: 66.67% a 100% -->
+            <path d="M 133.6 27.6 A 80 80 0 0 1 180 100" fill="none" stroke="#ea580c" stroke-width="16" stroke-linecap="butt" />
+            <!-- Aguja -->
+            <g id="agujaTemp" transform="rotate(-90 100 100)">
+              <line x1="100" y1="100" x2="100" y2="28" stroke="#f8fafc" stroke-width="3.5" stroke-linecap="round" />
+              <circle cx="100" cy="100" r="7" fill="#f8fafc" />
+            </g>
+          </svg>
+          <div id="valorTemp" class="gauge-readout">-- °C</div>
+          <div id="horaTemp" class="sub">Sin datos</div>
+        </div>
+      </div>
+
+      <!-- Medidor Corriente motor -->
+      <div class="card">
+        <h2>Corriente motor</h2>
+        <div class="sub">Rango: 0 - 5 ($.I)</div>
+        <div class="gauge-box">
+          <svg class="gauge" viewBox="0 0 200 110">
+            <!-- Arco verde: 0 a 1.67 (33.33%) -->
+            <path d="M 20 100 A 80 80 0 0 1 66.4 27.6" fill="none" stroke="#16a34a" stroke-width="16" stroke-linecap="butt" />
+            <!-- Arco amarillo: 1.67 a 3.33 (66.67%) -->
+            <path d="M 66.4 27.6 A 80 80 0 0 1 133.6 27.6" fill="none" stroke="#eab308" stroke-width="16" stroke-linecap="butt" />
+            <!-- Arco rojo: 3.33 a 5 (100%) -->
+            <path d="M 133.6 27.6 A 80 80 0 0 1 180 100" fill="none" stroke="#ea580c" stroke-width="16" stroke-linecap="butt" />
+            <!-- Aguja -->
+            <g id="agujaCorr" transform="rotate(-90 100 100)">
+              <line x1="100" y1="100" x2="100" y2="28" stroke="#f8fafc" stroke-width="3.5" stroke-linecap="round" />
+              <circle cx="100" cy="100" r="7" fill="#f8fafc" />
+            </g>
+          </svg>
+          <div id="valorCorr" class="gauge-readout">--</div>
+          <div id="horaCorr" class="sub">Sin datos</div>
+        </div>
+      </div>
+
+      <!-- Estado tapa -->
+      <div class="card">
+        <h2>Estado tapa (0= Cerrada, 1= Abierta)</h2>
+        <div class="sub">Clave JSON: $.P</div>
+        <div id="valorTapa" class="tapa-valor">--</div>
+        <div id="horaTapa" class="sub">Esperando estado...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Control del motor (tolva/comandos)</h2>
+      <div class="botones">
+        <button class="btn-on" onclick="enviar('MOTOR=1*')">ENCENDER 100%</button>
+        <button class="btn-mid" onclick="enviar('MOTOR=0.5*')">VELOCIDAD MEDIA</button>
+        <button class="btn-off" onclick="enviar('MOTOR=0*')">APAGAR MOTOR</button>
+      </div>
+      <div id="ultimoCmd" class="sub" style="margin-top: 10px;">Último comando: ninguno</div>
+    </div>
+
+    <div class="card">
+      <h2>Registro de mensajes</h2>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+  <script>
+    const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt";
+    const TOPIC_TELEMETRIA = "tolva/telemetria";
+    const TOPIC_COMANDOS = "tolva/comandos";
+
+    const badgeEl = document.getElementById("estadoConexion");
+    const agujaTempEl = document.getElementById("agujaTemp");
+    const agujaCorrEl = document.getElementById("agujaCorr");
+    const valorTempEl = document.getElementById("valorTemp");
+    const valorCorrEl = document.getElementById("valorCorr");
+    const horaTempEl = document.getElementById("horaTemp");
+    const horaCorrEl = document.getElementById("horaCorr");
+    const valorTapaEl = document.getElementById("valorTapa");
+    const horaTapaEl = document.getElementById("horaTapa");
+    const ultimoCmdEl = document.getElementById("ultimoCmd");
+    const logEl = document.getElementById("log");
+
+    function log(msg) {
+      const hora = new Date().toLocaleTimeString();
+      logEl.textContent = `[${hora}] ${msg}\n` + logEl.textContent;
+    }
+
+    function actualizarAguja(elementoAguja, valor, min, max) {
+      const num = Number(valor);
+      if (Number.isNaN(num)) return;
+      const clamped = Math.max(min, Math.min(max, num));
+      const ratio = (clamped - min) / (max - min);
+      const angulo = -90 + ratio * 180; // -90° (izquierda) a +90° (derecha)
+      elementoAguja.setAttribute("transform", `rotate(${angulo} 100 100)`);
+    }
+
+    const client = mqtt.connect(BROKER_URL, {
+      clientId: "tolva_web_gauge_" + Math.random().toString(16).slice(2, 8),
+      clean: true,
+      connectTimeout: 4000
+    });
+
+    client.on("connect", () => {
+      badgeEl.textContent = "Conectado";
+      badgeEl.className = "badge ok";
+      log("Conectado a HiveMQ (WSS 8884)");
+      client.subscribe(TOPIC_TELEMETRIA, (err) => {
+        if (!err) log(`Suscrito a ${TOPIC_TELEMETRIA}`);
+      });
+    });
+
+    client.on("error", (err) => {
+      badgeEl.textContent = "Error";
+      badgeEl.className = "badge err";
+      log(`Error: ${err.message}`);
+    });
+
+    client.on("offline", () => {
+      badgeEl.textContent = "Desconectado";
+      badgeEl.className = "badge err";
+    });
+
+    client.on("message", (topic, payload) => {
+      const texto = payload.toString();
+      log(`RX [${topic}]: ${texto}`);
+
+      if (topic === TOPIC_TELEMETRIA) {
+        try {
+          const data = JSON.parse(texto);
+          const ahora = new Date().toLocaleTimeString();
+
+          if (data.T !== undefined) {
+            actualizarAguja(agujaTempEl, data.T, 0, 100);
+            valorTempEl.textContent = `${data.T} °C`;
+            horaTempEl.textContent = `Actualizado: ${ahora}`;
+          }
+
+          if (data.I !== undefined) {
+            actualizarAguja(agujaCorrEl, data.I, 0, 5);
+            valorCorrEl.textContent = `${data.I}`;
+            horaCorrEl.textContent = `Actualizado: ${ahora}`;
+          }
+
+          if (data.P !== undefined) {
+            const abierta = Number(data.P) === 1;
+            valorTapaEl.textContent = abierta ? "1 (Abierta)" : "0 (Cerrada)";
+            valorTapaEl.style.color = abierta ? "#fca5a5" : "#86efac";
+            horaTapaEl.textContent = `Actualizado: ${ahora}`;
+          }
+        } catch (e) {
+          log("Aviso: el mensaje recibido no es un JSON válido.");
+        }
+      }
+    });
+
+    function enviar(cmd) {
+      if (!client.connected) {
+        log("No hay conexión activa con el broker.");
+        return;
+      }
+      client.publish(TOPIC_COMANDOS, cmd);
+      ultimoCmdEl.textContent = `Último comando: ${cmd}`;
+      log(`TX [${TOPIC_COMANDOS}]: ${cmd}`);
+    }
+  </script>
+</body>
+</html>
